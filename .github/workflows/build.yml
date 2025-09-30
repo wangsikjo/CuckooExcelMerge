@@ -1,1 +1,57 @@
+name: Build Cuckoo ExcelMergeToPdf
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pywin32 tkinterdnd2 pillow cairosvg
+      - name: Make icon from SVG
+        shell: python
+        run: |
+          import os
+          from cairosvg import svg2png
+          from PIL import Image
+          svg_path = r"assets\cuckoo.svg"
+          png_path = r"assets\cuckoo_512.png"
+          ico_path = r"assets\company.ico"
+          os.makedirs("assets", exist_ok=True)
+          svg2png(url=svg_path, write_to=png_path, output_width=512, output_height=512, background_color='white')
+          img = Image.open(png_path).convert("RGBA")
+          img.save(ico_path, sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+      - name: Find TkDND path
+        id: find
+        shell: python
+        run: |
+          import site, os
+          p = os.path.join(site.getsitepackages()[0], "tkinterdnd2", "TkinterDnD2")
+          print(f"::set-output name=TKDND::{p}")
+      - name: Build EXE with icon + DnD
+        run: >
+          pyinstaller --onefile --windowed --noconsole --name "Cuckoo ExcelMergeToPdf"
+          --icon assets\company.ico
+          --hidden-import=win32timezone
+          --add-data "${{ steps.find.outputs.TKDND }};tkinterdnd2/TkinterDnD2"
+          app_portable.py
+      - name: Prepare portable
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path Portable\data | Out-Null
+          Copy-Item "dist\Cuckoo ExcelMergeToPdf.exe" "Portable\ExcelMergeToPdf.exe" -Force
+          Set-Content -Path Portable\README.txt -Value "Cuckoo ExcelMergeToPdf — Portable (DnD, Icon)" -Encoding UTF8
+      - name: Zip
+        shell: powershell
+        run: |
+          Compress-Archive -Path Portable -DestinationPath Cuckoo_ExcelMergeToPdf_Portable.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cuckoo_ExcelMergeToPdf_Portable
+          path: Cuckoo_ExcelMergeToPdf_Portable.zip
 
